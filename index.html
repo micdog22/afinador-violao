@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Afinador de Violão — Afinador Online</title>
+<style>
+  :root { --bg: #0b0f14; --panel:#121821; --text:#e6edf3; --sub:#9fb1c5; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#60a5fa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 24px 16px; text-align: center; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  header p { margin: 0; color: var(--sub); }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--panel); padding: 16px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+  .row { display: grid; gap: 12px; }
+  @media (min-width: 720px) { .row { grid-template-columns: 2fr 1fr; } }
+  .gauge { height: 120px; background: #0d131b; border-radius: 12px; padding: 12px; display: grid; grid-template-rows: 1fr auto; }
+  .bar { position: relative; height: 18px; background: linear-gradient(90deg,#233244,#1e293b,#233244); border-radius: 9px; overflow: hidden; }
+  .bar::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #4b5563; }
+  .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: #334155; opacity: .6; }
+  .needle { position: absolute; top: -6px; bottom: -6px; width: 2px; background: var(--accent); left: 50%; transform: translateX(-50%); }
+  .zone { position: absolute; top: 0; bottom: 0; }
+  .zone.flat { left: 0; right: 50%; background: linear-gradient(90deg, rgba(239,68,68,.2), transparent); }
+  .zone.sharp { left: 50%; right: 0; background: linear-gradient(90deg, transparent, rgba(239,68,68,.2)); }
+  .readouts { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; text-align: center; margin-top: 10px; }
+  .num { font-size: 20px; font-weight: 700; }
+  .muted { color: var(--sub); font-size: 12px; }
+  .panel { display: grid; gap: 12px; }
+  .strings { display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; }
+  .strings button { padding: 10px 8px; border-radius: 12px; border: 1px solid #233244; background:#0d131b; color:var(--text); cursor:pointer; transition:.15s; }
+  .strings button:hover { background:#101826; border-color:#2a3b55; }
+  .strings button.active { background: #12233a; border-color:#3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,.25) inset; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; }
+  .controls button, .controls input[type=range] { appearance:none; border:1px solid #233244; background:#0d131b; color:var(--text); padding:10px 12px; border-radius:12px; cursor:pointer; }
+  .controls label { display:flex; align-items:center; gap:8px; color:var(--sub); }
+  .notice { margin-top: 12px; color: var(--sub); font-size: 14px; }
+  footer { padding: 24px 16px; text-align:center; color: var(--sub); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Afinador de Violão — Afinador Online</h1>
+  <p>Funciona no navegador com microfone (Web Audio API). Também toca notas de referência.</p>
+</header>
+<div class="wrap">
+  <div class="row">
+    <section class="card gauge">
+      <div class="bar" id="bar">
+        <div class="zone flat"></div>
+        <div class="zone sharp"></div>
+        <div class="needle" id="needle"></div>
+      </div>
+      <div class="readouts">
+        <div><div class="muted">Nota detectada</div><div class="num" id="note">—</div></div>
+        <div><div class="muted">Desvio</div><div class="num" id="cents">0 ¢</div></div>
+        <div><div class="muted">Frequência</div><div class="num" id="freq">0 Hz</div></div>
+      </div>
+    </section>
+    <aside class="card panel">
+      <div>
+        <div class="muted">Cordas</div>
+        <div class="strings" id="strings"></div>
+      </div>
+      <div class="controls">
+        <button id="btnMic">Usar microfone</button>
+        <button id="btnStop">Parar</button>
+        <button id="btnTone">Tocar nota</button>
+        <label>Calibração A4: <span id="calVal">440</span> Hz
+          <input type="range" min="415" max="466" value="440" id="cal">
+        </label>
+      </div>
+      <div class="notice">
+        Dicas: use em ambiente silencioso, aproxime o instrumento do microfone e toque a corda solta. Em celulares, use em HTTPS (GitHub Pages) para o navegador liberar o microfone.
+      </div>
+    </aside>
+  </div>
+</div>
+<footer>MIT License • Afinador de Violão</footer>
+
+<script>
+const STRINGS = [["E2", 82.41], ["A2", 110.0], ["D3", 146.83], ["G3", 196.0], ["B3", 246.94], ["E4", 329.63]];
+let A4 = 440;
+let audioCtx = null, analyser = null, micStream = null, rafId = null;
+let osc = null, gain = null;
+let target = null;
+
+const elStrings = document.getElementById('strings');
+const elNote = document.getElementById('note');
+const elCents = document.getElementById('cents');
+const elFreq = document.getElementById('freq');
+const elNeedle = document.getElementById('needle');
+const elCal = document.getElementById('cal');
+const elCalVal = document.getElementById('calVal');
+
+function hz(n){ return Math.round(n*10)/10; }
+function clamp(x,a,b){ return Math.max(a, Math.min(b, x)); }
+
+function buildStrings(){
+  STRINGS.forEach(([label, f], idx)=>{
+    const b = document.createElement('button');
+    b.textContent = label + " (" + hz(f) + " Hz)";
+    b.onclick = ()=>{ setTarget(label, f); markActive(idx); };
+    elStrings.appendChild(b);
+  });
+  if (STRINGS.length) { setTarget(STRINGS[0][0], STRINGS[0][1]); markActive(0); }
+}
+
+function markActive(i){
+  [...elStrings.children].forEach((b, k)=> b.classList.toggle('active', i===k));
+}
+
+function setTarget(label, freq){
+  target = {label, freq};
+}
+
+function noteFromFrequency(f){
+  const n = Math.round(12 * Math.log2(f / A4) + 69);
+  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+  const name = names[(n % 12 + 12) % 12] + Math.floor(n/12 - 1);
+  const ref = A4 * Math.pow(2, (n-69)/12);
+  const cents = 1200 * Math.log2(f / ref);
+  return { name, ref, cents };
+}
+
+function startMic(){
+  stopAll();
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:false, autoGainControl:false}})
+    .then(stream=>{
+      micStream = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      micStream.connect(analyser);
+      loop();
+    })
+    .catch(err=>{ alert("Não foi possível acessar o microfone: " + err.message); });
+}
+
+function stopAll(){
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = null;
+  if (micStream && micStream.mediaStream){
+    micStream.mediaStream.getTracks().forEach(t=>t.stop());
+  }
+  micStream = null; analyser = null;
+  if (osc) { osc.stop(); osc.disconnect(); osc=null; }
+  if (gain) { gain.disconnect(); gain=null; }
+  if (audioCtx) { /* keep */ }
+}
+
+function playTone(){
+  if (!target) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (osc) { osc.stop(); osc.disconnect(); }
+  if (!gain) { gain = audioCtx.createGain(); gain.gain.value = 0.05; gain.connect(audioCtx.destination); }
+  osc = audioCtx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = target.freq;
+  osc.connect(gain);
+  osc.start();
+}
+
+function autoCorrelate(buf, sampleRate){
+  const SIZE = buf.length;
+  let rms = 0;
+  for (let i=0;i<SIZE;i++) rms += buf[i]*buf[i];
+  rms = Math.sqrt(rms/SIZE);
+  if (rms < 0.01) return -1;
+
+  let bestOffset = -1, bestCorr = 0;
+  let lastCorr = 1;
+  for (let offset=32; offset< SIZE/2; offset++){
+    let corr = 0;
+    for (let i=0;i<SIZE-offset;i++){ corr += buf[i]*buf[i+offset]; }
+    corr = corr / (SIZE-offset);
+    if (corr > 0.9 && corr < lastCorr) {
+      bestOffset = offset; break;
+    }
+    lastCorr = corr;
+    if (corr > bestCorr) { bestCorr = corr; bestOffset = offset; }
+  }
+  if (bestOffset > -1){
+    return sampleRate / bestOffset;
+  }
+  return -1;
+}
+
+function loop(){
+  if (!analyser) return;
+  const buf = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(buf);
+  const freq = autoCorrelate(buf, audioCtx.sampleRate);
+  if (freq > 0){
+    const n = noteFromFrequency(freq);
+    elNote.textContent = n.name;
+    elFreq.textContent = hz(freq) + " Hz";
+    const cents = clamp(n.cents, -50, 50);
+    elCents.textContent = (n.cents>0?"+":"") + Math.round(n.cents) + " ¢";
+    const pos = (cents + 50) / 100;
+    elNeedle.style.left = (pos*100) + "%";
+  } else {
+    elNote.textContent = "—";
+    elCents.textContent = "0 ¢";
+    elFreq.textContent = "0 Hz";
+    elNeedle.style.left = "50%";
+  }
+  rafId = requestAnimationFrame(loop);
+}
+
+document.getElementById('btnMic').onclick = startMic;
+document.getElementById('btnStop').onclick = stopAll;
+document.getElementById('btnTone').onclick = playTone;
+elCal.oninput = (e)=>{ A4 = +e.target.value; elCalVal.textContent = A4; };
+
+buildStrings();
+</script>
+</body>
+</html>
