@@ -1,4 +1,4 @@
-# Afinador de Violão — Afinador Online (HTML + CSS + JS)
+# Afinador de Violão: Afinador Online (HTML + CSS + JS)
 
 Afinador simples feito em uma única página (`index.html`) usando a **Web Audio API**. Funciona no navegador (desktop e mobile) e pode ser publicado facilmente no **GitHub Pages**.
 

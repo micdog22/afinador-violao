@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Afinador de Violão — Afinador Online</title>
+<title>Afinador de Violão: Afinador Online</title>
 <style>
   :root { --bg: #0b0f14; --panel:#121821; --text:#e6edf3; --sub:#9fb1c5; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#60a5fa; }
   * { box-sizing: border-box; }
@@ -40,7 +40,7 @@
 </head>
 <body>
 <header>
-  <h1>Afinador de Violão — Afinador Online</h1>
+  <h1>Afinador de Violão: Afinador Online</h1>
   <p>Funciona no navegador com microfone (Web Audio API). Também toca notas de referência.</p>
 </header>
 <div class="wrap">
@@ -52,7 +52,7 @@
         <div class="needle" id="needle"></div>
       </div>
       <div class="readouts">
-        <div><div class="muted">Nota detectada</div><div class="num" id="note">—</div></div>
+        <div><div class="muted">Nota detectada</div><div class="num" id="note">-</div></div>
         <div><div class="muted">Desvio</div><div class="num" id="cents">0 ¢</div></div>
         <div><div class="muted">Frequência</div><div class="num" id="freq">0 Hz</div></div>
       </div>
@@ -200,7 +200,7 @@ function loop(){
     const pos = (cents + 50) / 100;
     elNeedle.style.left = (pos*100) + "%";
   } else {
-    elNote.textContent = "—";
+    elNote.textContent = "-";
     elCents.textContent = "0 ¢";
     elFreq.textContent = "0 Hz";
     elNeedle.style.left = "50%";
